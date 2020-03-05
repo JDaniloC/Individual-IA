@@ -34,21 +34,22 @@ class Mob:
         return codigo
 
     def __add__(self, powerup):
-        if type(powerup).__name__ == 'Supply':
+        if powerup.tipo == 'Supply':
             tipo = random.choice(['vida', 'ataque', 'defesa', 'sorte'])
-            if tipo == 'vida':     self.vida = (self.vida + powerup.receive()) if (self.vida + powerup.receive) <= self.vidaMax else self.vidaMax
+            if tipo == 'vida':     self.vida = (self.vida + powerup.receive()) if (self.vida + powerup.receive()) <= self.vidaMax else self.vidaMax
             elif tipo == 'ataque': self.ataque += powerup.receive()
             elif tipo == 'defesa': self.defesa += powerup.receive()
             else:                  self.sorte += 1
         else:
             self.exp += powerup.receive()
             if self.exp >= 100: self.up()
+        #print(self)
 
     def __str__(self):
         for i,o in self.__dict__.items():
             print(i+':',o)
         print()
-        return str(self.__dict__)
+        return ''
     
     def __del__(self):
         print(self.id,"morreu ao nível:",self.nivel)
@@ -61,17 +62,3 @@ class Mob:
         self.defesa += 1
 
         if self.exp >= 100: self.up()
-
-class Supply:
-    def __init__(self):
-        self.tipo = random.randint(1,3)
-    
-    def receive(self):
-        return self.tipo
-
-class Xp:
-    def __init__(self): 
-        self.tipo = random.randint(10, 100)
-    
-    def receive(self):
-        return self.tipo

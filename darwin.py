@@ -39,7 +39,7 @@ def comparador(pivo):
             pontuacao += 1
     return pontuacao/len(objetivo) * 100
 
-objetivo = 'prefiro morrer do que perder a vida'
+objetivo = 'o rato roeu a roupa do rei de roma'
 valores = [chr(x) for x in range(ord('a'), ord('a') + 26)] + [' ']
 aleatorio = [choice(valores) for x in range(len(objetivo))]
 
