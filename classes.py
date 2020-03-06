@@ -16,20 +16,19 @@ class Mob:
     def __sub__(self, inimigo):
         codigo = 0
 
-        if inimigo.ataque == self.defesa: 
-            print('Ataque defendido totalmente')
-            codigo = 1
-        elif inimigo.ataque < self.defesa:
+        if inimigo.ataque < self.defesa:
             print('Contra-ataque')
             if random.choice([False] + [True for x in range(self.sorte)]):
-                codigo = 2
-        else:
+                codigo = 1
+        elif inimigo.ataque > self.defesa:
             print(self.id, 'recebeu',inimigo.ataque-self.defesa, 'de dano!')
             self.vida -= inimigo.ataque - self.defesa
             
         if self.vida <= 0:
+            inimigo.exp += 100
+            inimigo.up()
             print(self.id, 'morreu.')
-            codigo = 3
+            codigo = 2
         
         return codigo
 

@@ -11,45 +11,49 @@ RED = (255, 0, 0)
 
 class Engine:
     @staticmethod
-    def run(objetos):
+    def run(tela, jogadores, listaDeXp, listaDePower):
+        objetos = jogadores + listaDeXp + listaDePower
         listaDeRemocao = {"players":[], "reward":[]}
         for i in range(len(objetos)):
-            if type(objetos[i]).__name__ == "Player":
-                colisoes = objetos[i].mob.collidelist([x.mob for x in objetos[:i] + objetos[i + 1:]])
+            if type(objetos[i]).__name__ == "Player" and objetos[i].id not in listaDeRemocao['players']:
+                objetos[i].pensar(listaDeXp, listaDePower, jogadores)
+                colisoes = objetos[i].mob.collidelist([objetos[x].mob for x in range(len(objetos)) if x != i])
 
                 if colisoes != -1:
+                    if colisoes >= i: colisoes += 1
                     if type(objetos[colisoes]).__name__ == "Player":
-                        #print("É um jogador")
-                        pass
+                        ataque = objetos[colisoes] - objetos[i]
+                        if ataque == 1:
+                            objetos[i] - objetos[colisoes]
+                        elif ataque == 2:
+                            listaDeRemocao['players'].insert(0, objetos[colisoes].id)
                     else:
                         objetos[i] + objetos[colisoes]
-                        print(f"Colocando {objetos[colisoes].id}")
                         listaDeRemocao["reward"].insert(0, objetos[colisoes].id)
 
             objetos[i].desenhar(tela)
 
         return listaDeRemocao
-    
-    @staticmethod
-    def distancias(lista):
-        if len(lista) > 1:
-            print(lista[0].calcularDistancia(lista[1].mob))
 
     @staticmethod
-    def spawnPlayer(tela, lista, quantidade):
-        for i in range(1, quantidade):
-            lista.append(Player(tela, i))
+    def spawnPlayer(tela, lista, comportamentos, quantidade):
+        for i in range(quantidade):
+            lista.append(Player(tela, i, comportamentos[i]))
     
     @staticmethod
-    def spawnReward(tela, lista, quantidade, textos):
+    def spawnReward(tela, listaDeXp, listaDePower, quantidade):
         for i in range(1, quantidade):
-            lista.append(Reward(tela, i))
-            textos.append(Texto(str(lista[-1].id), lista[-1].coords()))
-
-    
+            listaDeXp.append(Xp(tela, i))
+            listaDePower.append(PowerUp(tela, i * -1))
+            
     @staticmethod
     def criaCor():
         return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+
+    @staticmethod
+    def randomPlace():
+        tamanho = pygame.display.Info()
+        return random.randint(0, tamanho.current_w), random.randint(0, tamanho.current_h)
 
 class Texto:
     def __init__(self, nome, posicao):
@@ -59,13 +63,12 @@ class Texto:
 
 
 class Player(Mob):
-    def __init__(self, tela, identificador, jogavel = False):
+    def __init__(self, tela, identificador, comportamentos = [[1 for x in range(8)] for x in range(4)]):
         super().__init__(identificador)
-        self.player = jogavel
+        self.comportamentos = comportamentos
         self.cor = Engine.criaCor()
 
-        tamanho = pygame.display.Info()
-        self.mob = pygame.draw.circle(tela, self.cor, (random.randint(0, tamanho.current_w), random.randint(0, tamanho.current_h)), 10)
+        self.mob = pygame.draw.circle(tela, self.cor, Engine.randomPlace(), 10)
 
     def mover(self, key):
         if key[pygame.K_LEFT] and self.coords()[0] > 0:
@@ -76,9 +79,6 @@ class Player(Mob):
            self.mob = self.mob.move(0, -2)
         if key[pygame.K_DOWN] and self.coords()[1] < pygame.display.Info().current_h:
            self.mob = self.mob.move(0, 2)
-
-    def desenhar(self, tela):
-        pygame.draw.circle(tela, self.cor, self.mob[:2], 10)
 
     def seguir(self, outro):
         outroX, outroY = outro.coords()
@@ -116,79 +116,126 @@ class Player(Mob):
             key[pygame.K_UP] = True
         self.mover(key)
 
-    def calcularDistancia(self, outro):
-        return math.sqrt(math.pow(self.mob.x - outro.x, 2) + math.pow(self.mob.y - outro.y, 2))
+    def pensar(self, listaDeXp, listaDePower, listaDePlayers):
+        # Calcula os mais próximos
+        maiorDist = math.sqrt((math.pow(pygame.display.Info().current_w, 2) + math.pow(pygame.display.Info().current_h, 2)))
+        xp = self.calcularDistancia(min(listaDeXp, key = lambda x: self.calcularDistancia(x))) if listaDeXp != [] else maiorDist 
+        power = self.calcularDistancia(min(listaDePower, key = lambda x: self.calcularDistancia(x))) if listaDePower != [] else maiorDist
+        player = self.calcularDistancia(min(listaDePlayers, key = lambda x: self.calcularDistancia(x) if x.id != self.id else float("inf"))) if listaDePlayers != [] else maiorDist
+        
+        # Calcula essa média aritimética 
+        atributos = [self.nivel, self.ataque, self.defesa] + [self.vida/self.vidaMax*100, self.exp] + [(1 - (x/maiorDist)) * 100 for x in [xp, power, player]]
+        
+        resultado = {"enemy":0, "xp":0, "power":0, "run":0} # Seguir inimigo, seguir xp, seguir power, fugir inimigo
+        for i in range(4):
+            resultado[i] = (self.mediaPonderada(atributos[:3], self.comportamentos[i][:3]) + self.mediaPonderada(atributos[3:], self.comportamentos[i][:3])) / 2
+        maior = max(resultado, key = lambda x: resultado[x])
+        if maior == "enemy":
+            self.seguir(player)
+        elif maior == "xp":
+            self.seguir(xp)
+        elif maior == "power":
+            self.seguir(power)
+        else:
+            self.fugir(player)
 
+    def mediaPonderada(self, lista, comportamentos):
+        resultado = 0
+        for x in range(len(lista)):
+            resultado += lista[x] * comportamentos[x]
+        return resultado/sum(comportamentos)
+
+    def calcularDistancia(self, outro):
+        return math.sqrt(math.pow(self.mob.x - outro.coords()[0], 2) + math.pow(self.mob.y - outro.coords()[1], 2))
     def coords(self):
         return self.mob.x, self.mob.y
+    def desenhar(self, tela):
+        pygame.draw.circle(tela, self.cor, self.mob[:2], 10)
 
 class Reward:
     def __init__(self, tela, identificador):
         self.id = identificador
-        if random.randint(0, 2) == 1:
-            self.tipo = "Supply"
-            self.recompensa = random.randint(1,3)
-        else:
-            self.tipo = "Xp"
-            self.recompensa = random.randint(10, 100)
-        self.cor = Engine.criaCor()
+        self.cor = (255, 0, 0) if self.tipo == "Supply" else (255, 255, 0)
 
         tamanho = pygame.display.Info()
-        self.mob = pygame.draw.rect(tela, self.cor, pygame.Rect(random.randint(0, tamanho.current_w), random.randint(0, tamanho.current_h), 5, 5))
+        self.mob = pygame.draw.rect(tela, self.cor, pygame.Rect(Engine.randomPlace(), (5, 5)))
     
     def receive(self):
-        print(f"DEVOLVENDO {self.id}")
         return self.recompensa
     def desenhar(self, tela):
         pygame.draw.rect(tela, self.cor, self.mob, 5)
     def coords(self):
         return self.mob.x, self.mob.y
 
-pygame.init()
-pygame.display.set_caption("Evolução genética")
+class Xp(Reward):
+    def __init__(self, tela, identificador):
+        self.tipo = "Xp"
+        self.recompensa = random.randint(10, 100)
+        super().__init__(tela, identificador)
 
-tela = pygame.display.set_mode((640, 480))
-tela.fill(WHITE)
+class PowerUp(Reward):
+    def __init__(self, tela, identificador):
+        self.tipo = "Supply"
+        self.recompensa = random.randint(1,3)
+        super().__init__(tela, identificador)
 
-pygame.display.flip()
+class Game:
+    def __init__(self, comportamentos, quantidade):
+        pygame.init()
+        pygame.display.set_caption("Evolução genética")
 
-jogadores = [Player(tela, 0, True)]
-premios = []
-textos = []
+        tela = pygame.display.set_mode((640, 480))
+        tela.fill(WHITE)
 
-tempo = pygame.time
+        pygame.display.flip()
 
-jogando = True
-cont = 0
+        jogadores = []
+        listaDeXp, listaDePower = [], []
 
-Engine.spawnReward(tela, premios, 10, textos)
-Engine.spawnPlayer(tela, jogadores, 10)
+        tempo = pygame.time
 
-while jogando:
-    for evento in pygame.event.get():
-        if evento.type == pygame.QUIT:
-            jogando = False
-    
-    jogadores[0].mover(pygame.key.get_pressed())
-    remover = Engine.run(jogadores + premios)
+        jogando = True
+        cont = 0
 
-    for i in remover['players']:
-        for j in jogadores:
-            if j.id == i:
-                jogadores.remove(j)
-                break
-    
-    for i in remover['reward']:
-        print(f"Procurando {i}")
-        for j in premios:
-            if j.id == i:
-                premios.remove(j)
-                break
-    
-    for i in textos:
-        tela.blit(i.main, i.posicao)
+        Engine.spawnReward(tela, listaDeXp, listaDePower, quantidade)
+        textos = Engine.spawnPlayer(tela, jogadores, comportamentos, quantidade)
 
-    pygame.display.flip()
-    tela.fill(WHITE)
+        while jogando:
+            for evento in pygame.event.get():
+                if evento.type == pygame.QUIT:
+                    jogando = False
+            
+            #jogadores[0].mover(pygame.key.get_pressed())
+            remover = Engine.run(tela, jogadores, listaDeXp, listaDePower)
 
-    tempo.delay(50)
+            for i in remover['players']:
+                for j in jogadores:
+                    if j.id == i:
+                        jogadores.remove(j)
+                        break
+
+            for i in remover['reward']:
+                ver = False
+                cont = 0
+                while not ver and (cont < len(listaDeXp) or cont < len(listaDePower)):
+                    if cont < len(listaDePower) and listaDePower[cont].id == i:
+                        listaDePower.pop(cont)
+                        ver = True
+                    elif cont < len(listaDeXp) and listaDeXp[cont].id == i:
+                        listaDeXp.pop(cont)
+                        ver = True
+                    cont += 1
+
+            pygame.display.flip()
+            tela.fill(WHITE)
+
+            tempo.delay(40)
+
+            if len(jogadores) <= 1:
+                jogando = False
+        
+        self.ganhador = jogadores[0]
+
+    def getGanhador(self): return self.ganhador.comportamentos
+
+#print(Game().getGanhador())
