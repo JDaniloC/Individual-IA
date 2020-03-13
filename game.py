@@ -38,7 +38,7 @@ class Engine:
     @staticmethod
     def spawnPlayer(tela, lista, comportamentos, quantidade):
         for i in range(quantidade):
-            lista.append(Player(tela, i, comportamentos[i]))
+            lista.append(Player(tela, i))
     
     @staticmethod
     def spawnReward(tela, listaDeXp, listaDePower, quantidade):
@@ -100,6 +100,7 @@ class Player(Mob):
         self.mover(key)
     
     def fugir(self, outro):
+        print(outro)
         outroX, outroY = outro.coords()
         x, y = self.coords()
         key = {pygame.K_RIGHT: False,
@@ -127,16 +128,18 @@ class Player(Mob):
         atributos = [self.nivel, self.ataque, self.defesa] + [self.vida/self.vidaMax*100, self.exp] + [(1 - (x/maiorDist)) * 100 for x in [xp, power, player]]
         
         resultado = {"enemy":0, "xp":0, "power":0, "run":0} # Seguir inimigo, seguir xp, seguir power, fugir inimigo
+        keys = ['enemy', 'xp', 'power', 'run']
         for i in range(4):
-            resultado[i] = (self.mediaPonderada(atributos[:3], self.comportamentos[i][:3]) + self.mediaPonderada(atributos[3:], self.comportamentos[i][:3])) / 2
+            resultado[keys[i]] = (self.mediaPonderada(atributos[:3], self.comportamentos[i][:3]) + self.mediaPonderada(atributos[3:], self.comportamentos[i][3:])) / 2
+        print(resultado)
         maior = max(resultado, key = lambda x: resultado[x])
-        if maior == "enemy":
+        if maior == "enemy" and type(player) != float:
             self.seguir(player)
-        elif maior == "xp":
+        elif maior == "xp" and type(xp) != float:
             self.seguir(xp)
-        elif maior == "power":
+        elif maior == "power" and type(power) != float:
             self.seguir(power)
-        else:
+        elif type(player) != float:
             self.fugir(player)
 
     def mediaPonderada(self, lista, comportamentos):
@@ -189,7 +192,7 @@ class Game:
 
         pygame.display.flip()
 
-        jogadores = []
+        jogadores = [Player(tela, 72, [[10 for x in range(8)], [x**x for x in range(8)], [1 for x in range(8)], [1 for x in range(8)]])]
         listaDeXp, listaDePower = [], []
 
         tempo = pygame.time
@@ -228,6 +231,8 @@ class Game:
 
             pygame.display.flip()
             tela.fill(WHITE)
+            
+            jogadores[0].pensar(listaDeXp, listaDePower, jogadores)
 
             tempo.delay(40)
 
@@ -238,4 +243,4 @@ class Game:
 
     def getGanhador(self): return self.ganhador.comportamentos
 
-#print(Game().getGanhador())
+print(Game([], 1).getGanhador())
