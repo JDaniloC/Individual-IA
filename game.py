@@ -11,12 +11,17 @@ RED = (255, 0, 0)
 
 class Engine:
     @staticmethod
-    def run(tela, jogadores, listaDeXp, listaDePower):
+    def run(tela, jogadores, listaDeXp, listaDePower, end):
         objetos = jogadores + listaDeXp + listaDePower
         listaDeRemocao = {"players":[], "reward":[]}
         for i in range(len(objetos)):
             if type(objetos[i]).__name__ == "Player" and objetos[i].id not in listaDeRemocao['players']:
-                objetos[i].pensar(listaDeXp, listaDePower, jogadores)
+                if objetos[i].id != -1:
+                    if end:
+                        print("SuddenDeath")
+                        objetos[i].seguir([x for x in jogadores if x != objetos[i]][0])
+                    else:
+                        objetos[i].pensar(listaDeXp, listaDePower, jogadores)
                 colisoes = objetos[i].mob.collidelist([objetos[x].mob for x in range(len(objetos)) if x != i])
 
                 if colisoes != -1:
@@ -38,7 +43,7 @@ class Engine:
     @staticmethod
     def spawnPlayer(tela, lista, comportamentos, quantidade):
         for i in range(quantidade):
-            lista.append(Player(tela, i))
+            lista.append(Player(tela, i, comportamentos[i]))
     
     @staticmethod
     def spawnReward(tela, listaDeXp, listaDePower, quantidade):
@@ -55,11 +60,10 @@ class Engine:
         tamanho = pygame.display.Info()
         return random.randint(0, tamanho.current_w), random.randint(0, tamanho.current_h)
 
-class Texto:
-    def __init__(self, nome, posicao):
-        fonte = pygame.font.SysFont('Comic Sans MS', 15)
-        self.main = fonte.render(nome, False, (0, 0, 0))
-        self.posicao = posicao
+def criaTexto(nome):
+    fonte = pygame.font.SysFont('Comic Sans MS', 15)
+    fonte.set_bold(True)
+    return fonte.render(str(nome), False, (255, 255, 255))
 
 
 class Player(Mob):
@@ -67,8 +71,10 @@ class Player(Mob):
         super().__init__(identificador)
         self.comportamentos = comportamentos
         self.cor = Engine.criaCor()
+        self.tela = tela
 
         self.mob = pygame.draw.circle(tela, self.cor, Engine.randomPlace(), 10)
+        self.fonte = criaTexto(identificador)
 
     def mover(self, key):
         if key[pygame.K_LEFT] and self.coords()[0] > 0:
@@ -100,7 +106,6 @@ class Player(Mob):
         self.mover(key)
     
     def fugir(self, outro):
-        print(outro)
         outroX, outroY = outro.coords()
         x, y = self.coords()
         key = {pygame.K_RIGHT: False,
@@ -118,35 +123,67 @@ class Player(Mob):
         self.mover(key)
 
     def pensar(self, listaDeXp, listaDePower, listaDePlayers):
-        # Calcula os mais próximos
-        maiorDist = math.sqrt((math.pow(pygame.display.Info().current_w, 2) + math.pow(pygame.display.Info().current_h, 2)))
-        xp = self.calcularDistancia(min(listaDeXp, key = lambda x: self.calcularDistancia(x))) if listaDeXp != [] else maiorDist 
-        power = self.calcularDistancia(min(listaDePower, key = lambda x: self.calcularDistancia(x))) if listaDePower != [] else maiorDist
-        player = self.calcularDistancia(min(listaDePlayers, key = lambda x: self.calcularDistancia(x) if x.id != self.id else float("inf"))) if listaDePlayers != [] else maiorDist
+        # A maior distância possível no mapa
+        maiorDist = math.sqrt((
+            math.pow(pygame.display.Info().current_w, 2) + 
+            math.pow(pygame.display.Info().current_h, 2)
+        ))
+
+        #
+        xp = min(listaDeXp, key = lambda x: self.calcularDistancia(x)) if listaDeXp != [] else maiorDist 
+        power = min(listaDePower, key = lambda x: self.calcularDistancia(x)) if listaDePower != [] else maiorDist
+        player = min(listaDePlayers, key = lambda x: self.calcularDistancia(x) if x.id != self.id else float("inf")) if listaDePlayers != [] else maiorDist
+
+        # Atributos
+        atributos = (
+            [self.nivel, self.ataque, self.defesa] + 
+            [self.vida/self.vidaMax*100, self.exp] + 
+            [(1 - (x/maiorDist)) * 100 for x in 
+                [self.calcularDistancia(xp) if type(xp) != float else xp, 
+                self.calcularDistancia(power) if type(power) != float else power, 
+                self.calcularDistancia(player) if type(player) != float else player]
+            ]
+        )
         
-        # Calcula essa média aritimética 
-        atributos = [self.nivel, self.ataque, self.defesa] + [self.vida/self.vidaMax*100, self.exp] + [(1 - (x/maiorDist)) * 100 for x in [xp, power, player]]
-        
-        resultado = {"enemy":0, "xp":0, "power":0, "run":0} # Seguir inimigo, seguir xp, seguir power, fugir inimigo
+        resultado = {"enemy":0, "xp":0, "power":0, "run":0}
         keys = ['enemy', 'xp', 'power', 'run']
+
+        # Média aritimética entre as médias ponderadas
         for i in range(4):
-            resultado[keys[i]] = (self.mediaPonderada(atributos[:3], self.comportamentos[i][:3]) + self.mediaPonderada(atributos[3:], self.comportamentos[i][3:])) / 2
-        print(resultado)
+            resultado[keys[i]] = (
+            self.mediaPonderada(atributos[:3], self.comportamentos[i][:3]) + 
+            self.mediaPonderada(atributos[3:], self.comportamentos[i][3:])
+            ) / 2
+        
         maior = max(resultado, key = lambda x: resultado[x])
-        if maior == "enemy" and type(player) != float:
+        if not self.escolherAcaso(maior, player, xp, power):
+            random.shuffle(keys)
+            for i in range(4):
+                if self.escolherAcaso(keys[i], player, xp, power):
+                    break
+
+    def escolherAcaso(self, escolha, player, xp, power):
+        if escolha == "enemy" and type(player) != float:
+            self.cor = (255, 0, 0)
             self.seguir(player)
-        elif maior == "xp" and type(xp) != float:
+        elif escolha == "xp" and type(xp) != float:
+            self.cor = (255, 255, 0)
             self.seguir(xp)
-        elif maior == "power" and type(power) != float:
+        elif escolha == "power" and type(power) != float:
+            self.cor = (0, 0, 255)
             self.seguir(power)
-        elif type(player) != float:
+        elif escolha == 'run' and type(player) != float:
+            self.cor = (0, 0, 0)
             self.fugir(player)
+        else:
+            return False
+        return True
 
     def mediaPonderada(self, lista, comportamentos):
         resultado = 0
         for x in range(len(lista)):
             resultado += lista[x] * comportamentos[x]
-        return resultado/sum(comportamentos)
+        return resultado/sum(comportamentos) if sum(comportamentos) > 0 else resultado
 
     def calcularDistancia(self, outro):
         return math.sqrt(math.pow(self.mob.x - outro.coords()[0], 2) + math.pow(self.mob.y - outro.coords()[1], 2))
@@ -154,6 +191,7 @@ class Player(Mob):
         return self.mob.x, self.mob.y
     def desenhar(self, tela):
         pygame.draw.circle(tela, self.cor, self.mob[:2], 10)
+        self.tela.blit(self.fonte, (self.mob[0] - 4, self.mob[1] - 11))
 
 class Reward:
     def __init__(self, tela, identificador):
@@ -190,31 +228,41 @@ class Game:
         tela = pygame.display.set_mode((640, 480))
         tela.fill(WHITE)
 
+        tempo = pygame.time
         pygame.display.flip()
 
-        jogadores = [Player(tela, 72, [[10 for x in range(8)], [x**x for x in range(8)], [1 for x in range(8)], [1 for x in range(8)]])]
-        listaDeXp, listaDePower = [], []
-
-        tempo = pygame.time
-
         jogando = True
-        cont = 0
+        suddenDeath = 1000
+        velocidade = 120
 
-        Engine.spawnReward(tela, listaDeXp, listaDePower, quantidade)
+        jogadores, listaDeXp, listaDePower = [], [], []
+
+        Engine.spawnReward(tela, listaDeXp, listaDePower, quantidade*3)
         textos = Engine.spawnPlayer(tela, jogadores, comportamentos, quantidade)
 
         while jogando:
             for evento in pygame.event.get():
                 if evento.type == pygame.QUIT:
                     jogando = False
+                
+                tecla = pygame.key.get_pressed()
+                if tecla[pygame.K_EQUALS]:
+                    velocidade -= 10
+                elif tecla[pygame.K_MINUS]:
+                    velocidade += 10
+                elif tecla[pygame.K_p]:
+                    suddenDeath = 0
             
             #jogadores[0].mover(pygame.key.get_pressed())
-            remover = Engine.run(tela, jogadores, listaDeXp, listaDePower)
+
+            remover = Engine.run(tela, jogadores, listaDeXp, listaDePower, suddenDeath <= 0)
 
             for i in remover['players']:
                 for j in jogadores:
                     if j.id == i:
+                        suddenDeath = 1000
                         jogadores.remove(j)
+                        del j
                         break
 
             for i in remover['reward']:
@@ -231,16 +279,48 @@ class Game:
 
             pygame.display.flip()
             tela.fill(WHITE)
-            
-            jogadores[0].pensar(listaDeXp, listaDePower, jogadores)
 
-            tempo.delay(40)
+            tempo.delay(velocidade)
+
+            if suddenDeath < -500:
+                print("HOLLY SUDDENDEATHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH")
+                jogadores = jogadores[1:]
 
             if len(jogadores) <= 1:
                 jogando = False
+            
+            suddenDeath -= 1
         
         self.ganhador = jogadores[0]
 
     def getGanhador(self): return self.ganhador.comportamentos
 
-print(Game([], 1).getGanhador())
+def transform(string):
+    lista = [x[1:].split(', ') for x in string[1:len(string) - 1].split("], ")]
+    lista[3][7] = lista[3][7][:len(lista[3][7]) - 1]
+    return [list(map(int, x)) for x in lista]
+
+def battleRoyal():
+    oponentes = []
+    pontuacao = {}
+    for i in range(int(input("Quantos oponentes: "))):
+        caracteristica = transform(input())
+        oponentes.append(caracteristica)
+        pontuacao[str(caracteristica)] = 0
+    
+    for i in range(int(input("Quantas rodadas: "))):
+        ganhador = Game(oponentes, len(oponentes)).getGanhador()
+        pontuacao[str(ganhador)] += 1
+
+    print("\n")
+    for i, j in pontuacao.items():
+        print(j, ":", i)
+
+    print("Ganhador: ", max(pontuacao, key = lambda x: pontuacao[x]), sep='\n')
+        
+
+battleRoyal()
+'''print(Game([
+    [[6, 1, 8, 3, 10, 1, 4, 4], [4, 1, 3, 1, 1, 8, 1, 3], [4, 1, 5, 6, 10, 6, 9, 1], [8, 6, 5, 5, 8, 5, 1, 1]], 
+    [[1, 5, 7, 3, 1, 3, 9, 5], [1, 0, 4, 8, 5, 0, 9, 8], [5, 10, 4, 2, 0, 6, 1, 7], [5, 2, 8, 3, 2, 1, 1, 5]]
+    ], 2).getGanhador())'''

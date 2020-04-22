@@ -1,4 +1,5 @@
 import random
+from time import sleep
 
 class Mob:
     def __init__(self, identificador):
@@ -12,22 +13,27 @@ class Mob:
 
         self.nivel = 1
         self.exp = 0
+        self.resistencia = 3
 
     def __sub__(self, inimigo):
         codigo = 0
 
-        if inimigo.ataque < self.defesa:
-            print('Contra-ataque')
-            if random.choice([False] + [True for x in range(self.sorte)]):
+        if inimigo.ataque < self.defesa and self.resistencia > 0:
+            #print('Contra-ataque')
+            escolha = [False] + [True for x in range(self.sorte)]
+            if random.choice(escolha):
                 codigo = 1
-        elif inimigo.ataque > self.defesa:
-            print(self.id, 'recebeu',inimigo.ataque-self.defesa, 'de dano!')
-            self.vida -= inimigo.ataque - self.defesa
+            else:
+                self.resistencia -= 1
+        elif inimigo.ataque > self.defesa or self.resistencia == 0:
+            #print(self.id, 'recebeu',inimigo.ataque-self.defesa, 'de dano!')
+            self.vida -= inimigo.ataque - self.defesa if self.resistencia > 0 else inimigo.ataque
+            self.resistencia = 3
             
         if self.vida <= 0:
             inimigo.exp += 100
             inimigo.up()
-            print(self.id, 'morreu.')
+            #print(self.id, 'morreu.')
             codigo = 2
         
         return codigo
@@ -42,7 +48,7 @@ class Mob:
         else:
             self.exp += powerup.receive()
             if self.exp >= 100: self.up()
-        #print(self)
+        ##print(self)
 
     def __str__(self):
         for i,o in self.__dict__.items():
@@ -51,7 +57,7 @@ class Mob:
         return ''
     
     def __del__(self):
-        print(self.id,"morreu ao nível:",self.nivel)
+        print(self.id,"morreu ao nível:", self.nivel, "ataque:", self.ataque, "defesa:", self.defesa)
     
     def up(self):
         self.exp -= 100
